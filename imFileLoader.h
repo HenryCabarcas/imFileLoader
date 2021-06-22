@@ -27,7 +27,6 @@
 #ifndef _MAP_
 #include <map>
 #endif
-
 #include <iostream>
 
 namespace fs = std::filesystem;
@@ -111,7 +110,7 @@ namespace ImGui {
 		std::vector<File> childs;
 	};
 
-	bool Splitter(bool, float, float*, float*, float, float, float splitter_long_axis_size = -1.0f);
+	bool splitter(bool, float, float*, float*, float, float, float splitterLongAxisSize = -1.0f);
 
 	Folder listThisFolder(const char*);
 
@@ -179,19 +178,51 @@ inline gl::Texture gl::LoadTextureFromFile(char* filename) {
 }
 
 #endif
+inline bool BeginIsolated(const char* title, bool* opened = (bool*)0, ImGuiWindowFlags flags = 0) {
+	ImGuiViewport* view = ImGui::GetMainViewport();
+	ImVec4* colors = ImGui::GetStyle().Colors;
+	ImVec4 c = colors[ImGuiCol_WindowBg];
+	colors[ImGuiCol_WindowBg] = colors[ImGuiCol_ModalWindowDimBg];
+	ImGui::SetNextWindowPos({ 0,0 });
+	ImGui::SetNextWindowSize(view->Size);
+	bool clicked = ImGui::Begin("__f0__", opened,
+		ImGuiWindowFlags_NoTitleBar |
+		ImGuiWindowFlags_NoScrollbar |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoResize |
+		ImGuiWindowFlags_NoNav |
+		ImGuiWindowFlags_NoBringToFrontOnFocus);
+	ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+	ImGui::End();
+	if (clicked)ImGui::SetNextWindowFocus();
+	colors[ImGuiCol_WindowBg] = c;
+	ImGui::SetNextWindowFocus();
+	ImGui::Begin(title, opened, flags);
+	ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+	return ImGui::IsItemClicked() ? true : clicked;
+}
+inline void EndIsolated() {
+	ImGui::End();
+}
+inline void CloseIsolated(bool* opened) {
+	*opened = false;
+}
 
-bool ImGui::Splitter(bool split_vertically, float thickness, float* size1, float* size2, float min_size1, float min_size2, float splitter_long_axis_size)
+void CloseIsolated(const char* title) {
+	ImGui::CloseCurrentPopup();
+}
+bool ImGui::splitter(bool split_vertically, float thickness, float* size1, float* size2, float min_size1, float min_size2, float splitterLongAxisSize)
 {
 	using namespace ImGui;
 	ImGuiContext& g = *GImGui;
 	ImGuiWindow* window = g.CurrentWindow;
-	ImGuiID id = window->GetID("##Splitter");
+	ImGuiID id = window->GetID("##splitter");
 	ImRect bb;
 	ImVec2 im = split_vertically ? ImVec2(*size1, 0.0f) : ImVec2(0.0f, *size1);
 	bb.Min = ImVec2(window->DC.CursorPos.x + im.x, window->DC.CursorPos.y + im.y);
-	ImVec2 it = CalcItemSize(split_vertically ? ImVec2(thickness, splitter_long_axis_size) : ImVec2(splitter_long_axis_size, thickness), 0.0f, 0.0f);
+	ImVec2 it = CalcItemSize(split_vertically ? ImVec2(thickness, splitterLongAxisSize) : ImVec2(splitterLongAxisSize, thickness), 0.0f, 0.0f);
 	bb.Max = ImVec2(bb.Min.x + it.x, bb.Min.y + it.y);
-	return SplitterBehavior(bb, id, split_vertically ? ImGuiAxis_X : ImGuiAxis_Y, size1, size2, min_size1, min_size2, 0.0f);
+	return splitterBehavior(bb, id, split_vertically ? ImGuiAxis_X : ImGuiAxis_Y, size1, size2, min_size1, min_size2, 0.0f);
 }
 
 bool ImGui::File::getInfo(fs::directory_entry _source) {
@@ -412,7 +443,7 @@ inline std::vector<std::string> ImGui::imFileLoader(const char* Label, bool* han
 	stringSelectedBuffer.clear();
 	ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
 	ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	if (ImGui::Begin(Label, handle))
+	if (BeginIsolated(Label, handle))
 	{
 		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0);
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 4));
@@ -481,7 +512,7 @@ inline std::vector<std::string> ImGui::imFileLoader(const char* Label, bool* han
 		if (ImGui::InputTextEx("", "Search", charFindFile, 128, ImVec2(ImGui::GetContentRegionAvailWidth(), ImGui::GetFrameHeight()), ImGuiInputTextFlags_None)) {}
 		ImGui::Text(charFindFile);
 
-		ImGui::Splitter(true, 8.0f, &fileListWidth, &filePreviewWidth, 8, 8, ImGui::GetContentRegionAvail().y - 30);
+		ImGui::splitter(true, 8.0f, &fileListWidth, &filePreviewWidth, 8, 8, ImGui::GetContentRegionAvail().y - 30);
 		if (ImGui::BeginChild("Filelist", ImVec2(fileListWidth, ImGui::GetContentRegionAvail().y - 30))) {
 			//drawTreeNodes(folder);
 		}
@@ -495,7 +526,7 @@ inline std::vector<std::string> ImGui::imFileLoader(const char* Label, bool* han
 		if (ImGui::Button("Cancel", ImVec2(120, 0))) { *handle = false; }
 
 	}
-	ImGui::End();
+	EndIsolated();
 	return stringSelectedBuffer;
 }
 
