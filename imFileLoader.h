@@ -20,6 +20,8 @@
 #include <vector>
 #endif
 
+#include <filesystem>
+
 #ifndef _MAP_
 #include <map>
 #endif
@@ -121,17 +123,20 @@ namespace ImGui {
 		void showSaver(const char* id) { saverVisible = id; }
 		void showFolder(const char* id) { folderVisible = id; }
 		bool isVisible() const { return loaderVisible.size() > 0 || saverVisible.size() > 0 || folderVisible.size() > 0; }
-		void hide() { saverVisible.clear(); loaderVisible.clear(); }
+		void hide() { saverVisible.clear(); loaderVisible.clear(); folderVisible.clear(); }
 		std::vector<std::string> getResult() const {
 			return filesSelected;
 		}
-		bool showFilesIcons(bool*, char*);
+		std::string getFolderResult() const {
+			return folderSelected;
+		}
+		bool showFilesIcons(bool*, char*, bool showFiles = true);
 		bool readUserPaths();
 		const char* drawUserFolders();
 		std::vector<File> findFileList(Folder, const char*);
 
 	private:
-		bool content();
+		bool content(bool showFiles = true);
 		std::string title = "", path = "";
 		std::map<const char*, std::string> paths;
 		std::vector<const char*> filters = { "*" };
@@ -141,6 +146,7 @@ namespace ImGui {
 		ImGui::Folder folder;
 		std::vector<ImGui::File> bufferFiles;
 		std::vector<std::string> filesSelected;
+		std::string folderSelected = "";
 		std::string _f = "folder";
 		std::vector<Folder> _back, _forward;
 	};
@@ -307,6 +313,7 @@ static inline bool dirExists(char* path)
 inline bool ImGui::FileManager::readUserPaths() {
 #define func(...) [&](__VA_ARGS__)->
 
+
 	auto load = func(const KNOWNFOLDERID profile)std::string{
 		std::wstring temp = L"";
 		PWSTR buffer = L"";
@@ -468,7 +475,7 @@ inline bool ImGui::FileIcon(ImTextureID id, const char* title, bool* selected, b
 }
 
 
-inline bool ImGui::FileManager::showFilesIcons(bool* list, char* value) {
+inline bool ImGui::FileManager::showFilesIcons(bool* list, char* value, bool showFiles) {
 	if (value != "") {
 		bufferFiles = findFileList(folder, value);
 	}
@@ -489,9 +496,12 @@ inline bool ImGui::FileManager::showFilesIcons(bool* list, char* value) {
 			}
 			_f = "folder";
 			if (!item.is_dir) _f = "file";
-
+			if (!showFiles && !item.is_dir) continue;
 			if (ImGui::FileIcon((ImTextureID)icons->at(_f).id, item.name, &list[i], multipleSelection)) {
-				filesSelected.push_back(item.path);
+				if (item.is_dir)
+					folderSelected = item.path;
+				else
+					filesSelected.push_back(item.path);
 			}
 			else if (ImGui::IsItemClicked()) {
 				if (ImGui::GetIO().KeyCtrl)
@@ -511,6 +521,8 @@ inline bool ImGui::FileManager::showFilesIcons(bool* list, char* value) {
 			if (ImGui::IsItemHovered()) {
 				if (ImGui::IsMouseDoubleClicked(0)) {
 					if (item.is_dir) {
+						filesSelected.clear();
+						folderSelected = item.path;
 						_back.push_back(folder);
 						folder.load(item.path);
 						_forward.clear();
@@ -529,7 +541,9 @@ inline bool ImGui::FileManager::showFilesIcons(bool* list, char* value) {
 		}
 	return false;
 };
-inline bool ImGui::FileManager::content() {
+static bool createFolder = false;
+static char newFolderName[128] = {};
+inline bool ImGui::FileManager::content(bool showFiles) {
 
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0);
 	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 4));
@@ -538,6 +552,7 @@ inline bool ImGui::FileManager::content() {
 		&& !_back.empty()) {
 		_forward.push_back(folder);
 		folder.load(_back.back().getPath().c_str());
+		folderSelected = _back.back().getPath();
 		_back.pop_back();
 
 	} ImGui::SameLine();
@@ -546,6 +561,7 @@ inline bool ImGui::FileManager::content() {
 		&& !_forward.empty()) {
 		_back.push_back(folder);
 		folder.load(_forward.back().getPath().c_str());
+		folderSelected = _forward.back().getPath();
 		_forward.pop_back();
 	}
 	ImGui::PopStyleVar();
@@ -558,6 +574,7 @@ inline bool ImGui::FileManager::content() {
 		std::string parent = folder.getPath();
 		parent = parent.substr(0, parent.find_last_of('/'));
 		folder.load(parent.c_str());
+		folderSelected = parent.c_str();
 	}
 
 	ImGui::SameLine();
@@ -571,6 +588,7 @@ inline bool ImGui::FileManager::content() {
 				if (ImGui::Button(temp.substr(temp.find_last_of('/') + 1).c_str())) {
 					_back.push_back(folder);
 					folder.load(temp.c_str());
+					folderSelected = temp.c_str();
 					_forward.clear();
 				}
 				ImGui::SameLine();
@@ -590,7 +608,35 @@ inline bool ImGui::FileManager::content() {
 	}
 	ImGui::SameLine();
 	if (ImGui::InputTextEx("", "Search", charFindFile, 128, ImVec2(ImGui::GetContentRegionAvailWidth(), ImGui::GetFrameHeight()), ImGuiInputTextFlags_None)) {}
-	ImGui::Text(charFindFile);
+	if (!createFolder) {
+		if (ImGui::Button("Create folder", ImVec2(120, 0))) {
+			if (!createFolder) createFolder = true;
+			else {
+				createFolder = false;
+			}
+		}
+	}
+	else {
+		ImGui::InputTextEx(".", "Folder Name", newFolderName, 128, ImVec2(275, ImGui::GetFrameHeight()), ImGuiInputTextFlags_None);
+		ImGui::SameLine();
+		if (ImGui::Button("Confirm")) {
+			std::string command = folder.getPath() + "/" + newFolderName;
+			namespace fs = std::filesystem;
+			if (fs::create_directory(command.c_str())) {
+				folder.load(command.c_str());
+				folderSelected = command;
+				createFolder = false;
+
+			}
+		}
+		ImGui::SameLine();
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 0, 0.1, 1));
+		if (ImGui::Button("Cancel")) {
+			createFolder = false;
+
+		}
+		ImGui::PopStyleColor();
+	}
 
 	ImGui::splitter(true, 8.0f, &fileListWidth, &filePreviewWidth, 8, 8, ImGui::GetContentRegionAvail().y - 30);
 	if (ImGui::BeginChild("Filelist", ImVec2(fileListWidth, ImGui::GetContentRegionAvail().y - 30))) {
@@ -599,6 +645,7 @@ inline bool ImGui::FileManager::content() {
 			_back.push_back(folder);
 			_forward.clear();
 			folder.load(driveLetter);
+			folderSelected = driveLetter;
 		}
 		const char* userFolder = drawUserFolders();
 		if (userFolder != "" && userFolder != folder.getPath().c_str()) {
@@ -606,13 +653,14 @@ inline bool ImGui::FileManager::content() {
 			_forward.clear();
 			Log(userFolder);
 			folder.load(userFolder);
+			folderSelected = userFolder;
 		}
 	}
 	ImGui::EndChild();
 	filePreviewWidth = ImGui::GetContentRegionAvailWidth() - fileListWidth;
 	ImGui::SameLine();
 	if (ImGui::BeginChild("Filepreview", ImVec2(filePreviewWidth - 8, ImGui::GetContentRegionAvail().y - 30))) {
-		if (showFilesIcons(folderStates, charFindFile)) {
+		if (showFilesIcons(folderStates, charFindFile, showFiles)) {
 			ImGui::EndChild();
 			return true;
 
@@ -623,7 +671,39 @@ inline bool ImGui::FileManager::content() {
 
 }
 inline bool ImGui::FileManager::imFolderLoader(const char* id) {
+	bool visible = false;
+	if (folderVisible == id) {
+		visible = true;
+		multipleSelection = false;
+		//stringSelectedBuffer.clear();
+		if (folder.getPath().size() == 0)
+			folder.load(path.c_str());
+		ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
+		ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+		if (BeginIsolated(title.c_str(), &visible))
+		{
+			if (content(false)) {
+				hide();
+				EndIsolated();
+				return true;
+			}
+			if (ImGui::Button("Cancel", ImVec2(80, 0))) {
+				hide();
+				filesSelected.clear();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Select", ImVec2(100, 0)) && !folderSelected.empty()) {
+				Log(folderSelected);
+				hide();
+				EndIsolated();
+				return true;
+			}
 
+
+		}
+		EndIsolated();
+	}
+	return false;
 }
 inline bool ImGui::FileManager::imFileLoader(const char* id) {
 	bool visible = false;
