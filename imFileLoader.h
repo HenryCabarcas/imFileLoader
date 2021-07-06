@@ -20,16 +20,12 @@
 #include <vector>
 #endif
 
-#ifndef _FILESYSTEM_
-#include <filesystem>
-#endif
-
 #ifndef _MAP_
 #include <map>
 #endif
 #include <iostream>
+#include <tinydir.h>
 
-namespace fs = std::filesystem;
 
 #ifndef arraySize
 #define arraySize(value) sizeof(value)/sizeof(value[0])
@@ -80,104 +76,151 @@ namespace gl {
 
 
 namespace ImGui {
-	class File {
-	public:
-		File(fs::directory_entry _info) { getInfo(_info); }
-		File() {}
-		char filename[260] = {};
-		char ext[10] = {};
-		bool isFolder = false;
-		char parent[1024] = {};
-		char path[1024] = {};
-		uintmax_t size = 0;
-		fs::path rawPath;
-		std::vector<fs::path> parentsTree;
-		bool getInfo(fs::directory_entry);
-		bool getInfo(fs::path);
-		bool refresh();
-	};
+	typedef tinydir_file File;
 
-	class Folder : public File {
+	class Folder {
 	public:
+
 		void refresh();
-		bool load(std::string _path);
+		bool load(const char* _path);
 		std::vector<File> getChilds() const { return childs; }
-		void setChilds(const std::vector<File> _files) { childs = _files; }
+		void appedChild(const File _file) { childs.push_back(_file); }
 		size_t numberOfFiles() const { return childs.size(); }
 		File& operator[](size_t idx) { return childs.at(idx); }
+		bool setPath(const char* _path);
+		std::string getPath()const { return path; }
+		tinydir_dir dir;
 	private:
-		std::vector<fs::directory_entry> content;
+		std::string path = "";
 		std::vector<File> childs;
+	};
+	class FileManager {
+	public:
+		FileManager() {
+			readUserPaths();
+		}
+		FileManager(const char* initialPath) {
+			path = initialPath;
+			readUserPaths();
+		}
+		~FileManager() {};
+
+		void setTitle(const char* _title) { title = _title; }
+		void setIcons(std::map<std::string, gl::Texture>* _icons) { icons = _icons; }
+		void setPath(const char* _path) {
+			std::string temp(_path);
+			while (temp.find('\\') != std::string::npos)
+				temp.replace(temp.find_first_of('\\'), 1, 1, '/');
+			path = temp;
+		}
+		bool imFileSaver(const char* id);
+		bool imFileLoader(const char* id);
+		bool imFolderLoader(const char* id);
+		void setFilters(std::vector<const char*> _filters) { filters = _filters; }
+		void showLoader(const char* id) { loaderVisible = id; }
+		void showSaver(const char* id) { saverVisible = id; }
+		void showFolder(const char* id) { folderVisible = id; }
+		bool isVisible() const { return loaderVisible.size() > 0 || saverVisible.size() > 0 || folderVisible.size() > 0; }
+		void hide() { saverVisible.clear(); loaderVisible.clear(); }
+		std::vector<std::string> getResult() const {
+			return filesSelected;
+		}
+		bool showFilesIcons(bool*, char*);
+		bool readUserPaths();
+		const char* drawUserFolders();
+		std::vector<File> findFileList(Folder, const char*);
+
+	private:
+		bool content();
+		std::string title = "", path = "";
+		std::map<const char*, std::string> paths;
+		std::vector<const char*> filters = { "*" };
+		std::string loaderVisible = "", saverVisible = "", folderVisible = "";
+		bool multipleSelection = false;
+		std::map<std::string, gl::Texture>* icons;
+		ImGui::Folder folder;
+		std::vector<ImGui::File> bufferFiles;
+		std::vector<std::string> filesSelected;
+		std::string _f = "folder";
+		std::vector<Folder> _back, _forward;
 	};
 
 	bool splitter(bool, float, float*, float*, float, float, float splitterLongAxisSize = -1.0f);
 
 	Folder listThisFolder(const char*);
 
-	size_t drawTreeNodes(Folder*, bool);
+	const char* drawDiskLetters();
 
-	std::vector<File> findFileList(Folder, const char*);
 
-	bool FileIcon(ImTextureID, const char*, bool*, ImVec2, ImVec4, ImVec4);
 
-	std::vector<std::string> showFilesIcons(Folder*, std::map<std::string, gl::Texture>&, bool*, char*);
+	bool FileIcon(ImTextureID, const char*, bool*, bool, ImVec2, ImVec4, ImVec4);
 
-	std::vector<std::string> imFileLoader(const char*, bool*, Folder*, std::map<std::string, gl::Texture>&);
+	;
+
+
 
 }
 
+
 static bool dialogOpened = false;
-static bool folderStates[3000] = {};
 static float fileListWidth = 250;
 static float filePreviewWidth = 200;
 static char charFindFile[128] = "";
-static std::vector<ImGui::File> bufferFiles;
-static std::vector<std::string> stringSelectedBuffer;
-static ImGui::Folder mainFolder;
-static std::string _f = "folder";
-static std::vector<fs::path> _back, _forward;
+static bool folderStates[2048];
+
+static DWORD dwSize = MAX_PATH;
+static char szLogicalDrives[MAX_PATH] = { 0 };
+static std::vector<const char*> drives;
+const KNOWNFOLDERID defaultFoldersId[] = {
+		FOLDERID_Profile, FOLDERID_Documents, FOLDERID_Desktop, FOLDERID_Music, FOLDERID_Objects3D, FOLDERID_OneDrive, FOLDERID_Pictures, FOLDERID_Videos
+};
+const const char* defaultFolders[] = {
+	"User", "Documents","Desktop","Music","Objects 3D","OneDrive","Pictures","Videos"
+};
 
 const char* toLower(const char*);
 const char* toUpper(const char*);
+
 template<class T>
 size_t find(std::vector<T>, T);
-
-#include <imFileLoader.h>
-
 static std::string f = "";
-#ifdef STBI_INCLUDE_STB_IMAGE_H
-inline gl::Texture gl::LoadTextureFromFile(char* filename) {
-	int image_width = 0;
-	int image_height = 0;
-	unsigned char* image_data = stbi_load(filename.c_str(), &image_width, &image_height, NULL, 0);
-	if (filename.find_last_of(".png") > 0)
-		image_data = stbi_load(filename.c_str(), &image_width, &image_height, NULL, 4);
-	if (image_data == NULL)
-		return gl::Texture((unsigned int)0, 0.f, 0.f);
 
-	// Create a OpenGL texture identifier
-	glActiveTexture(GL_TEXTURE4);
-	unsigned int image_texture;
-	glGenTextures(1, &image_texture);
-	glBindTexture(GL_TEXTURE_2D, image_texture);
+#if defined(STBI_INCLUDE_STB_IMAGE_H) && !defined(_GL_IMG_) && !defined(LOAD_TEXTURE_DEFINED)
+#define LOAD_TEXTURE_DEFINED
+namespace gl {
+	inline gl::Texture LoadTextureFromFile(std::string filename) {
+		int image_width = 0;
+		int image_height = 0;
+		unsigned char* image_data = stbi_load(filename.c_str(), &image_width, &image_height, NULL, 0);
+		if (filename.find_last_of(".png") > 0)
+			image_data = stbi_load(filename.c_str(), &image_width, &image_height, NULL, 4);
+		if (image_data == NULL)
+			return gl::Texture((unsigned int)0, 0.f, 0.f);
 
-	// Setup filtering parameters for display
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
+		// Create a OpenGL texture identifier
+		glActiveTexture(GL_TEXTURE4);
+		unsigned int image_texture;
+		glGenTextures(1, &image_texture);
+		glBindTexture(GL_TEXTURE_2D, image_texture);
 
-	// Upload pixels into texture
+		// Setup filtering parameters for display
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
+
+		// Upload pixels into texture
 #if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+		glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 #endif
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
-	stbi_image_free(image_data);
-	glActiveTexture(GL_TEXTURE0);
-	return  gl::Texture(&image_texture, (float)image_width, (float)image_height);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
+		stbi_image_free(image_data);
+		glActiveTexture(GL_TEXTURE0);
+		return  gl::Texture(&image_texture, (float)image_width, (float)image_height);
+	}
 }
-
 #endif
+
 inline bool BeginIsolated(const char* title, bool* opened = (bool*)0, ImGuiWindowFlags flags = 0) {
 	ImGuiViewport* view = ImGui::GetMainViewport();
 	ImVec4* colors = ImGui::GetStyle().Colors;
@@ -197,6 +240,8 @@ inline bool BeginIsolated(const char* title, bool* opened = (bool*)0, ImGuiWindo
 	if (clicked)ImGui::SetNextWindowFocus();
 	colors[ImGuiCol_WindowBg] = c;
 	ImGui::SetNextWindowFocus();
+	ImGui::SetNextWindowSize(ImVec2(view->Size.x * 0.75, view->Size.y * 0.75));
+	ImGui::SetNextWindowPos(ImVec2(view->Size.x * 0.5f, view->Size.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 	ImGui::Begin(title, opened, flags);
 	ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 	return ImGui::IsItemClicked() ? true : clicked;
@@ -208,10 +253,11 @@ inline void CloseIsolated(bool* opened) {
 	*opened = false;
 }
 
-void CloseIsolated(const char* title) {
+inline void CloseIsolated(const char* title) {
 	ImGui::CloseCurrentPopup();
 }
-bool ImGui::splitter(bool split_vertically, float thickness, float* size1, float* size2, float min_size1, float min_size2, float splitterLongAxisSize)
+
+inline bool ImGui::splitter(bool split_vertically, float thickness, float* size1, float* size2, float min_size1, float min_size2, float splitterLongAxisSize)
 {
 	using namespace ImGui;
 	ImGuiContext& g = *GImGui;
@@ -225,151 +271,179 @@ bool ImGui::splitter(bool split_vertically, float thickness, float* size1, float
 	return splitterBehavior(bb, id, split_vertically ? ImGuiAxis_X : ImGuiAxis_Y, size1, size2, min_size1, min_size2, 0.0f);
 }
 
-bool ImGui::File::getInfo(fs::directory_entry _source) {
-	if (!_source.exists()) return false;
-	strcpy_s(filename, _source.path().filename().string().c_str());
-	//filename = _source.path().filename().string().c_str();
-	std::string f = _source.path().filename().extension().string().substr(_source.path().filename().extension().string().find_first_of(".") + 1);
-	strcpy_s(ext, f.data());
-	isFolder = _source.is_directory();
-	//parent = _source.path().parent_path().string();
-	strcpy_s(path, _source.path().string().c_str());
-	size = _source.file_size();
-	rawPath = _source.path();
-	return true;
-}
 
-bool ImGui::File::getInfo(fs::path _source) {
-	if (_source.empty()) return false;
-	strcpy_s(filename, _source.filename().string().c_str());
-	if (_source.has_extension())
-		strcpy_s(ext, _source.filename().extension().string().c_str());
-	isFolder = true;
-	strcpy_s(parent, _source.parent_path().string().c_str());
-	strcpy_s(path, _source.string().c_str());
-	rawPath = _source;
-	fs::path tempPath = _source.make_preferred();
-	parentsTree.insert(parentsTree.begin(), tempPath);
-	if (_source != _source.root_path()) {
-		do {
-			tempPath = tempPath.parent_path().make_preferred();
-			parentsTree.insert(parentsTree.begin(), tempPath);
-		} while (tempPath != tempPath.root_path());
-	}
-	//parentsTree.insert(parentsTree.begin(), tempPath.root_path());
-	return true;
-}
+inline bool readLocalDisks() {
 
-inline bool ImGui::File::refresh() {
-	return true;
-}
+	DWORD dwResult = GetLogicalDriveStrings(dwSize, szLogicalDrives);
 
-inline bool ImGui::Folder::load(std::string _path) {
-	if (_path.empty()) return false;
-	*this = listThisFolder(_path.c_str());
-	strcpy_s(path, _path.c_str());
-	return true;
-}
-
-inline void ImGui::Folder::refresh() { *this = listThisFolder(path); }
-
-inline ImGui::Folder ImGui::listThisFolder(const char* _path) {
-	Folder folder;
-	bufferFiles.clear();
-	int j = 0;
-	for (const auto& entry : fs::directory_iterator(_path)) {
-		if (j == 0) folder.getInfo(entry.path().parent_path()), j++;
-
-		File _file(entry);
-		bufferFiles.push_back(_file);
-	}
-	for (size_t i = 0; i < bufferFiles.size(); ++i) {
-		const auto item = bufferFiles[i];
-		if (item.isFolder) {
-			bufferFiles.insert(bufferFiles.begin(), item);
-			bufferFiles.erase(bufferFiles.begin() + i + 1);
+	if (dwResult > 0 && dwResult <= MAX_PATH)
+	{
+		drives.clear();
+		char* szSingleDrive = szLogicalDrives;
+		while (*szSingleDrive)
+		{
+			drives.push_back(szSingleDrive);
+			szSingleDrive += strlen(szSingleDrive) + 1;
 		}
+		drives.push_back(szSingleDrive);
+		return true;
 	}
-	folder.setChilds(bufferFiles);
-	//folder.File::refresh();
+	return false;
+}
+
+static inline bool dirExists(char* path)
+{
+	struct stat info;
+
+	if (stat(path, &info) != 0)
+		return false;
+	else if (info.st_mode & S_IFDIR)
+		return true;
+	else
+		return false;
+}
+
+
+inline bool ImGui::FileManager::readUserPaths() {
+#define func(...) [&](__VA_ARGS__)->
+
+	auto load = func(const KNOWNFOLDERID profile)std::string{
+		std::wstring temp = L"";
+		PWSTR buffer = L"";
+
+		if (SHGetKnownFolderPath(profile,0,NULL,&buffer) == S_OK) {
+			temp = buffer;
+			CoTaskMemFree(buffer);
+			while (temp.find('\\') != std::string::npos)
+				temp.replace(temp.find_first_of('\\'), 1, 1, '/');
+			return std::string(temp.begin(),temp.end());
+		}
+		return "";
+	};
+	for (size_t i = 0; i < arraySize(defaultFolders); ++i) {
+		std::string ph = load(defaultFoldersId[i]);
+		Log(ph);
+		if (dirExists(ph.data()))
+			paths.insert({ defaultFolders[i], ph });
+	}
+
+	return paths.size() > 0;
+#undef func
+
+}
+
+inline bool ImGui::Folder::load(const char* _path) {
+	if (_path == NULL) return false;
+	*this = listThisFolder(_path);
+	return true;
+}
+
+inline bool ImGui::Folder::setPath(const char* _path) {
+	path.assign(_path);
+	return path.size() > 0 ? true : false;
+}
+
+
+inline void ImGui::Folder::refresh() { *this = listThisFolder(path.c_str()); }
+
+inline ImGui::Folder ImGui::listThisFolder(const char* path) {
+	Folder folder;
+	if (tinydir_open_sorted(&folder.dir, path) > -1) {
+		size_t i;
+		for (i = 0; i < folder.dir.n_files; ++i)
+		{
+			tinydir_file file;
+			if (tinydir_readfile_n(&folder.dir, &file, i) > -1) {
+				std::string name = file.name;
+				if (name != "." && name != "..") {
+					folder.appedChild(file);
+				}
+			}
+		}
+		folder.setPath(folder.dir.path);
+		tinydir_close(&folder.dir);
+
+	}
 	return folder;
 };
 
-inline size_t ImGui::drawTreeNodes(Folder* folder, bool reload = true) {
-	static int selection_mask = (1 << 2);
-	size_t node_clicked = -1u;
-	ImGui::File item;
-	for (int i = 0; i < folder->numberOfFiles(); ++i) {
-		ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-		const bool is_selected = (selection_mask & (1 << i)) != 0;
-		if (is_selected)
-			node_flags |= ImGuiTreeNodeFlags_Selected;
-		item = folder->getChilds()[i];
-		if (item.isFolder) {
-			if (ImGui::TreeNode(item.filename)) {
-				//drawTreeNodes(&listThisFolder(item.path));
-				ImGui::TreePop();
-			}
-			if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-				_back.push_back(folder->rawPath);
-				folder->load(item.path);
-			}
-		}
-		else if (arraySize(item.filename) > 0) {
-			ImGui::TreeNodeEx((void*)(intptr_t)i, node_flags, item.filename);
-			if (ImGui::IsItemClicked())
-				node_clicked = i;
+inline const char* ImGui::drawDiskLetters() {
+	readLocalDisks();
+	ImGui::Text("Drives:");
+	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+	for (int i = 0; i < drives.size(); ++i) {
+		ImGui::TreeNodeEx((void*)(intptr_t)i, node_flags, drives[i]);
+		if (ImGui::IsItemClicked()) {
+			return drives[i];
+
 		}
 	}
-	/*if (node_clicked != -1)
-	{
-		if (ImGui::GetIO().KeyCtrl)
-			selection_mask ^= (1 << node_clicked);          // CTRL+click to toggle
-		else //if (!(selection_mask & (1 << node_clicked))) // Depending on selection behavior you want, may want to preserve selection when clicking on item that is part of the selection
-			selection_mask = (1 << node_clicked);           // Click to single-select
-		return node_clicked;
-	}*/
-	return node_clicked;
+	return "";
+
 }
 
-inline std::vector<ImGui::File> ImGui::findFileList(ImGui::Folder inputFolder, const char* value) {
-	const char* vl = toLower(value);
+inline const char* ImGui::FileManager::drawUserFolders() {
+	ImGui::Text("User Folders:");
+	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+	for (size_t i = 0; i < paths.size(); ++i) {
+		try {
+			std::string name = paths[defaultFolders[i]];
+			ImGui::TreeNodeEx((void*)(i + 100), node_flags, defaultFolders[i]);
+			if (ImGui::IsItemClicked()) {
+				return name.c_str();
+
+			}
+		}
+		catch (std::exception e) {
+			continue;
+		}
+	}
+	return"";
+}
+
+inline std::vector<ImGui::File> ImGui::FileManager::findFileList(ImGui::Folder inputFolder, const char* value) {
+	std::string vl = toLower(value);
 	std::vector<ImGui::File> temp;
 	std::string actual;
 	for (size_t i = 0; i < inputFolder.numberOfFiles(); ++i) {
-		actual = toLower(inputFolder[i].filename);
+		actual = toLower(inputFolder[i].name);
 		if (actual.find(vl) != std::string::npos)
 			temp.push_back(inputFolder[i]);
 	}
 	return temp;
 }
 
-inline bool ImGui::FileIcon(ImTextureID id, const char* title, bool* selected, ImVec2 size = { 85,95 }, ImVec4 tintColor = { 1, 1, 1, 1 }, ImVec4 borderColor = { 0,0,0,0 }) {
+inline bool ImGui::FileIcon(ImTextureID id, const char* title, bool* selected, bool selectable = true, ImVec2 size = { 85,95 }, ImVec4 tintColor = { 1, 1, 1, 1 }, ImVec4 borderColor = { 0,0,0,0 }) {
 	ImGuiStyle& style = ImGui::GetStyle();
 	ImDrawList* draw_list = ImGui::GetWindowDrawList();
 	ImVec4* colors = style.Colors;
 	ImGuiWindow* this_win = ImGui::GetCurrentWindow();
 	ImVec2 p = this_win->DC.CursorPos;
-	ImRect bb(p.x, p.y, p.x + size.x, p.y + size.y),
-		bb2(p.x, p.y, p.x + 16, p.y + 16);
-	ImGuiID this_id = this_win->GetID(title),
-		check_id = this_win->GetID(title + 1);
-	bool hovered = false, held, check_hovered = false, check_held;
+	ImRect bb(p.x, p.y, p.x + size.x, p.y + size.y), bb2;
+	bool hovered = false, held = false, check_hovered = false, check_held = false, check_clicked = false;
+	if (selectable) {
+		bb2 = { p.x, p.y, p.x + 16, p.y + 16 };
+		ImGuiID	check_id = this_win->GetID(title + 1);
+		ImGui::ItemAdd(bb2, check_id);
+		check_clicked = ButtonBehavior(bb2, check_id, &check_hovered, &check_held);
+		if (check_clicked)
+		{
+			*selected = !(*selected);
+			MarkItemEdited(check_id);
+		}
+	}
+	ImGuiID this_id = this_win->GetID(title);
 
-	ImGui::ItemAdd(bb2, check_id);
-	bool check_clicked = ButtonBehavior(bb2, check_id, &check_hovered, &check_held);
 	ImGui::ItemSize(bb, style.FramePadding.y);
-	bb.Min.y += 18, bb.Max.y -= 18;
+	if (selectable)
+		bb.Min.y += 18, bb.Max.y -= 18;
 	ImGui::ItemAdd(bb, this_id);
-	bb.Min.y -= 18, bb.Max.y += 18;
+	if (selectable)
+		bb.Min.y -= 18, bb.Max.y += 18;
 	bool clicked = ButtonBehavior(bb, this_id, &hovered, &held);
 
-	if (check_clicked)
-	{
-		*selected = !(*selected);
-		MarkItemEdited(check_id);
-	}
-	else if (clicked)
+
+	if (clicked)
 	{
 		*selected = !(*selected);
 		MarkItemEdited(this_id);
@@ -377,33 +451,46 @@ inline bool ImGui::FileIcon(ImTextureID id, const char* title, bool* selected, I
 	//RenderNavHighlight(bb, this_id);
 	if (*selected) {
 		RenderFrame(p, bb.Max, GetColorU32(hovered || clicked ? colors[ImGuiCol_ButtonActive] : colors[ImGuiCol_Button]));
-		draw_list->AddCircleFilled(ImVec2(bb2.Min.x + 9, bb2.Min.y + 9), 8.f, GetColorU32(check_hovered ? colors[ImGuiCol_ButtonActive] : ImVec4(0, 0, 0, 0)));
-		RenderCheckMark(draw_list, ImVec2(bb2.Min.x + 1, bb2.Min.y + 1), GetColorU32(colors[ImGuiCol_ButtonActive]), 16.f);
+		if (selectable) {
+			draw_list->AddCircleFilled(ImVec2(bb2.Min.x + 9, bb2.Min.y + 9), 8.f, GetColorU32(check_hovered ? colors[ImGuiCol_ButtonActive] : ImVec4(0, 0, 0, 0)));
+			RenderCheckMark(draw_list, ImVec2(bb2.Min.x + 1, bb2.Min.y + 1), GetColorU32(colors[ImGuiCol_ButtonActive]), 16.f);
+		}
 	}
 	else {
 		RenderFrame(p, ImVec2(p.x + size.x, p.y + size.y), GetColorU32(hovered ? colors[ImGuiCol_FrameBgHovered] : ImVec4(0, 0, 0, 0)));
-		draw_list->AddCircleFilled(ImVec2(bb2.Min.x + 9, bb2.Min.y + 9), 8.f, GetColorU32(check_hovered ? colors[ImGuiCol_ButtonActive] : colors[ImGuiCol_Button]));
+		if (selectable)draw_list->AddCircleFilled(ImVec2(bb2.Min.x + 9, bb2.Min.y + 9), 8.f, GetColorU32(check_hovered ? colors[ImGuiCol_ButtonActive] : colors[ImGuiCol_Button]));
 	}
 	draw_list->AddImage(id, ImVec2(p.x + 10, p.y + 10), ImVec2(p.x + size.x - 10, p.y + size.y - 20), ImVec2(0, 0), ImVec2(1, 1), GetColorU32(tintColor));
 	ImVec2 label_size = CalcTextSize(title, NULL, true);
 	RenderTextClipped(ImVec2(p.x + 1, p.y + size.y - 18), ImVec2(p.x + 1 + label_size.x, p.y + size.y - 18 + label_size.y),
 		title, NULL, &label_size, ImVec2(0.5, 0.5), &bb);
-	return check_clicked ? true : false;
+	return selectable ? check_clicked : clicked;
 }
 
 
-inline std::vector<std::string> ImGui::showFilesIcons(ImGui::Folder* folder, std::map<std::string, gl::Texture>& icons, bool* list, char* value) {
-	if (value != " ")
-		bufferFiles = findFileList(*folder, value);
-	std::vector<std::string> filesSelected;
+inline bool ImGui::FileManager::showFilesIcons(bool* list, char* value) {
+	if (value != "") {
+		bufferFiles = findFileList(folder, value);
+	}
 	int previewsRendered = 2;
 	ImGui::File item;
+	bool applyFilter = find(filters, "*") == -1 ? true : false;
 	if (bufferFiles.size() > 0)
 		for (size_t i = 0; i < bufferFiles.size(); ++i) {
 			item = bufferFiles[i];
+			if (applyFilter) {
+				if (!item.is_dir) {
+					int k = 0;
+					for (size_t j = 0; j < filters.size(); ++j)
+						if (std::string(item.name).find(filters[j]) != std::string::npos)
+							k++;
+					if (k == 0) continue;
+				}
+			}
 			_f = "folder";
-			if (!item.isFolder) _f = "file";
-			if (ImGui::FileIcon((ImTextureID)icons[_f].id, item.filename, &list[i])) {
+			if (!item.is_dir) _f = "file";
+
+			if (ImGui::FileIcon((ImTextureID)icons->at(_f).id, item.name, &list[i], multipleSelection)) {
 				filesSelected.push_back(item.path);
 			}
 			else if (ImGui::IsItemClicked()) {
@@ -423,12 +510,16 @@ inline std::vector<std::string> ImGui::showFilesIcons(ImGui::Folder* folder, std
 			}
 			if (ImGui::IsItemHovered()) {
 				if (ImGui::IsMouseDoubleClicked(0)) {
-					if (item.isFolder) {
-						_back.push_back(folder->rawPath);
-						folder->load(item.path);
+					if (item.is_dir) {
+						_back.push_back(folder);
+						folder.load(item.path);
+						_forward.clear();
+					}
+					else {
+						return true;
 					}
 				}
-				ImGui::SetTooltip(item.path);
+				ImGui::SetTooltip(item.name);
 			}
 			if ((ImGui::GetWindowContentRegionMax().x - ImGui::GetCursorStartPos().x - 30) / 90 > previewsRendered) {
 				ImGui::SameLine();
@@ -436,98 +527,172 @@ inline std::vector<std::string> ImGui::showFilesIcons(ImGui::Folder* folder, std
 			}
 			else previewsRendered = 2;
 		}
-	return filesSelected;
+	return false;
 };
+inline bool ImGui::FileManager::content() {
 
-inline std::vector<std::string> ImGui::imFileLoader(const char* Label, bool* handle, ImGui::Folder* folder, std::map<std::string, gl::Texture>& icons) {
-	stringSelectedBuffer.clear();
-	ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
-	ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	if (BeginIsolated(Label, handle))
-	{
-		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0);
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 4));
-		if (ImGui::ImageButton((ImTextureID)icons["left"].id,
-			ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()), ImVec2(0, 0), ImVec2(1, 1), 0)
-			&& !_back.empty()) {
-			_forward.push_back(folder->rawPath);
-			folder->load(_back.back().string().c_str());
-			_back.pop_back();
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0);
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 4));
+	if (ImGui::ImageButton((ImTextureID)icons->at("left").id,
+		ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()), ImVec2(0, 0), ImVec2(1, 1), 0)
+		&& !_back.empty()) {
+		_forward.push_back(folder);
+		folder.load(_back.back().getPath().c_str());
+		_back.pop_back();
 
-		} ImGui::SameLine();
-		if (ImGui::ImageButton((ImTextureID)icons["right"].id,
-			ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()), ImVec2(0, 0), ImVec2(1, 1), 0)
-			&& !_forward.empty()) {
-			_back.push_back(folder->rawPath);
-			folder->load(_forward.back().string().c_str());
-			_forward.pop_back();
-		}
-		ImGui::PopStyleVar();
-		ImGui::SameLine();
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(1, 4));
-		ImGui::PopStyleVar();
-		if (ImGui::ImageButton((ImTextureID)icons["up"].id,
-			ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()), ImVec2(0, 0), ImVec2(1, 1), 0)) {
-			_back.push_back(folder->rawPath);
-			folder->load(folder->rawPath.parent_path().string());
-		}
+	} ImGui::SameLine();
+	if (ImGui::ImageButton((ImTextureID)icons->at("right").id,
+		ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()), ImVec2(0, 0), ImVec2(1, 1), 0)
+		&& !_forward.empty()) {
+		_back.push_back(folder);
+		folder.load(_forward.back().getPath().c_str());
+		_forward.pop_back();
+	}
+	ImGui::PopStyleVar();
+	ImGui::SameLine();
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(1, 4));
+	ImGui::PopStyleVar();
+	if (ImGui::ImageButton((ImTextureID)icons->at("up").id,
+		ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()), ImVec2(0, 0), ImVec2(1, 1), 0)) {
+		_back.push_back(folder);
+		std::string parent = folder.getPath();
+		parent = parent.substr(0, parent.find_last_of('/'));
+		folder.load(parent.c_str());
+	}
 
-		ImGui::SameLine();
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(1, 0));
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-		if (ImGui::BeginChild("0", ImVec2(ImGui::GetContentRegionAvailWidth() - 220, ImGui::GetFrameHeight() + 2), true, ImGuiWindowFlags_NoScrollbar)) {
-			fs::path item;
-			const char* _fName = "";
-			for (size_t i = 0; i < folder->parentsTree.size(); ++i) {
-				item = folder->parentsTree[i];
-				if (item == folder->parentsTree[0].root_path())
-					_fName = item.root_name().string().c_str();
-				else _fName = item.filename().string().c_str();
-				if (ImGui::Button(_fName)) {
-					_back.push_back(folder->rawPath);
-					folder->load(item.string().c_str());
-				}
-				if (ImGui::IsItemHovered()) {
-					ImGui::SetTooltip(item.string().c_str());
+	ImGui::SameLine();
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(1, 0));
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+	if (ImGui::BeginChild("0", ImVec2(ImGui::GetContentRegionAvailWidth() - 260, ImGui::GetFrameHeight() + 2), true, ImGuiWindowFlags_NoScrollbar)) {
+		std::string allPath = folder.getPath(), temp = "";
+		size_t i;
+		for (i = 0; i < allPath.size(); ++i) {
+			if (allPath[i] == '/') {
+				if (ImGui::Button(temp.substr(temp.find_last_of('/') + 1).c_str())) {
+					_back.push_back(folder);
+					folder.load(temp.c_str());
+					_forward.clear();
 				}
 				ImGui::SameLine();
-				if (ImGui::ButtonEx("v", { 16,ImGui::GetFrameHeight() })) {//ImGui::ImageButton((void*)icons["sort-down"].id,
-					ImGui::OpenPopup("folder-list");															   //ImVec2(ImGui::GetFrameHeight() - 5, ImGui::GetFrameHeight() - 2), ImVec2(0, 0), ImVec2(1, 1), 1)) {
-				} ImGui::SameLine();
 
 			}
-			if (ImGui::BeginPopup("folder-list"))
-			{
-				ImGui::Text("Aquarium");
-				ImGui::Separator();
-				ImGui::Selectable("Hello!");
-				ImGui::EndPopup();
-			}
+			temp += allPath[i];
 		}
-		ImGui::EndChild();
-		ImGui::PopStyleVar();
-		ImGui::PopStyleVar();
-		ImGui::PopStyleVar();
-		ImGui::SameLine();
-		if (ImGui::InputTextEx("", "Search", charFindFile, 128, ImVec2(ImGui::GetContentRegionAvailWidth(), ImGui::GetFrameHeight()), ImGuiInputTextFlags_None)) {}
-		ImGui::Text(charFindFile);
-
-		ImGui::splitter(true, 8.0f, &fileListWidth, &filePreviewWidth, 8, 8, ImGui::GetContentRegionAvail().y - 30);
-		if (ImGui::BeginChild("Filelist", ImVec2(fileListWidth, ImGui::GetContentRegionAvail().y - 30))) {
-			//drawTreeNodes(folder);
-		}
-		ImGui::EndChild();
-		filePreviewWidth = ImGui::GetContentRegionAvailWidth() - fileListWidth;
-		ImGui::SameLine();
-		if (ImGui::BeginChild("Filepreview", ImVec2(filePreviewWidth - 8, ImGui::GetContentRegionAvail().y - 30))) {
-			stringSelectedBuffer = showFilesIcons(folder, icons, folderStates, charFindFile);
-		}
-		ImGui::EndChild();
-		if (ImGui::Button("Cancel", ImVec2(120, 0))) { *handle = false; }
-
+		ImGui::Button(temp.substr(temp.find_last_of('/') + 1).c_str());
 	}
-	EndIsolated();
-	return stringSelectedBuffer;
+	ImGui::EndChild();
+	ImGui::PopStyleVar();
+	ImGui::PopStyleVar();
+	ImGui::PopStyleVar();
+	ImGui::SameLine();
+	if (ImGui::Button("Copy Path")) {
+		ImGui::SetClipboardText(folder.getPath().c_str());
+	}
+	ImGui::SameLine();
+	if (ImGui::InputTextEx("", "Search", charFindFile, 128, ImVec2(ImGui::GetContentRegionAvailWidth(), ImGui::GetFrameHeight()), ImGuiInputTextFlags_None)) {}
+	ImGui::Text(charFindFile);
+
+	ImGui::splitter(true, 8.0f, &fileListWidth, &filePreviewWidth, 8, 8, ImGui::GetContentRegionAvail().y - 30);
+	if (ImGui::BeginChild("Filelist", ImVec2(fileListWidth, ImGui::GetContentRegionAvail().y - 30))) {
+		const char* driveLetter = drawDiskLetters();
+		if (driveLetter != "" && driveLetter != folder.getPath().c_str()) {
+			_back.push_back(folder);
+			_forward.clear();
+			folder.load(driveLetter);
+		}
+		const char* userFolder = drawUserFolders();
+		if (userFolder != "" && userFolder != folder.getPath().c_str()) {
+			_back.push_back(folder);
+			_forward.clear();
+			Log(userFolder);
+			folder.load(userFolder);
+		}
+	}
+	ImGui::EndChild();
+	filePreviewWidth = ImGui::GetContentRegionAvailWidth() - fileListWidth;
+	ImGui::SameLine();
+	if (ImGui::BeginChild("Filepreview", ImVec2(filePreviewWidth - 8, ImGui::GetContentRegionAvail().y - 30))) {
+		if (showFilesIcons(folderStates, charFindFile)) {
+			ImGui::EndChild();
+			return true;
+
+		}
+	}
+	ImGui::EndChild();
+	return false;
+
+}
+inline bool ImGui::FileManager::imFolderLoader(const char* id) {
+
+}
+inline bool ImGui::FileManager::imFileLoader(const char* id) {
+	bool visible = false;
+	if (loaderVisible == id) {
+		visible = true;
+		multipleSelection = false;
+		//stringSelectedBuffer.clear();
+		if (folder.getPath().size() == 0)
+			folder.load(path.c_str());
+		ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
+		ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+		if (BeginIsolated(title.c_str(), &visible))
+		{
+			if (content()) {
+				Log(filesSelected[0]);
+				hide();
+				EndIsolated();
+				return true;
+			}
+			if (ImGui::Button("Cancel", ImVec2(80, 0))) {
+				hide();
+				filesSelected.clear();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Open", ImVec2(100, 0)) && filesSelected.size() > 0) {
+				Log(filesSelected[0]);
+				hide();
+				EndIsolated();
+				return true;
+			}
+
+
+		}
+		EndIsolated();
+	}
+	return false;
+}
+
+inline bool ImGui::FileManager::imFileSaver(const char* id) {
+	bool visible = false;
+	if (saverVisible == id) {
+		visible = true;
+		multipleSelection = true;
+		filesSelected.clear();
+		if (folder.getPath().size() == 0)
+			folder.load(path.c_str());
+		ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
+		ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+		if (BeginIsolated(title.c_str(), &visible))
+		{
+			if (content()) {
+
+			}
+			if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+				hide();
+				filesSelected.clear();
+
+			}
+			if (ImGui::Button("Save")) {
+				hide();
+				EndIsolated();
+				return true;
+			}
+
+
+		}
+		EndIsolated();
+	}
+	return false;
 }
 
 inline const char* toLower(const char* value) {
@@ -543,6 +708,7 @@ inline const char* toUpper(const char* value) {
 }
 
 template<class T>
+
 inline size_t find(std::vector<T> _vec, T _value) {
 	for (size_t i = 0; i < _vec.size(); ++i) {
 		if (_vec[i] == _value) return i;
