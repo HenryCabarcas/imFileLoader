@@ -214,14 +214,13 @@ namespace gl {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
-
 		// Upload pixels into texture
 #if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
 		glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 #endif
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
 		stbi_image_free(image_data);
-		glActiveTexture(GL_TEXTURE0);
+		glActiveTexture(GL_TEXTURE4);
 		return  gl::Texture(&image_texture, (float)image_width, (float)image_height);
 	}
 }
@@ -356,7 +355,7 @@ inline void ImGui::Folder::refresh() { *this = listThisFolder(path.c_str()); }
 inline ImGui::Folder ImGui::listThisFolder(const char* path) {
 	Folder folder;
 	if (tinydir_open_sorted(&folder.dir, path) > -1) {
-		size_t i;
+		size_t i = 0;
 		for (i = 0; i < folder.dir.n_files; ++i)
 		{
 			tinydir_file file;
@@ -687,10 +686,13 @@ inline bool ImGui::FileManager::imFolderLoader(const char* id) {
 				EndIsolated();
 				return true;
 			}
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 0, 0.1, 1));
+
 			if (ImGui::Button("Cancel", ImVec2(80, 0))) {
 				hide();
 				filesSelected.clear();
 			}
+			ImGui::PopStyleColor();
 			ImGui::SameLine();
 			if (ImGui::Button("Select", ImVec2(100, 0)) && !folderSelected.empty()) {
 				Log(folderSelected);
@@ -723,10 +725,13 @@ inline bool ImGui::FileManager::imFileLoader(const char* id) {
 				EndIsolated();
 				return true;
 			}
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 0, 0.1, 1));
+
 			if (ImGui::Button("Cancel", ImVec2(80, 0))) {
 				hide();
 				filesSelected.clear();
 			}
+			ImGui::PopStyleColor();
 			ImGui::SameLine();
 			if (ImGui::Button("Open", ImVec2(100, 0)) && filesSelected.size() > 0) {
 				Log(filesSelected[0]);
@@ -757,11 +762,13 @@ inline bool ImGui::FileManager::imFileSaver(const char* id) {
 			if (content()) {
 
 			}
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 0, 0.1, 1));
 			if (ImGui::Button("Cancel", ImVec2(120, 0))) {
 				hide();
 				filesSelected.clear();
 
 			}
+			ImGui::PopStyleColor();
 			if (ImGui::Button("Save")) {
 				hide();
 				EndIsolated();
