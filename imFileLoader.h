@@ -85,16 +85,16 @@ namespace ImGui {
 
 		void refresh();
 		bool load(const char* _path);
-		std::vector<File> getChilds() const { return childs; }
-		void appedChild(const File _file) { childs.push_back(_file); }
-		size_t numberOfFiles() const { return childs.size(); }
-		File& operator[](size_t idx) { return childs.at(idx); }
+		std::vector<File> getChildren() const { return children; }
+		void appedChild(const File _file) { children.push_back(_file); }
+		size_t numberOfFiles() const { return children.size(); }
+		File& operator[](size_t idx) { return children.at(idx); }
 		bool setPath(const char* _path);
 		std::string getPath()const { return path; }
 		tinydir_dir dir;
 	private:
 		std::string path = "";
-		std::vector<File> childs;
+		std::vector<File> children;
 	};
 	class FileManager {
 	public:
@@ -328,7 +328,6 @@ inline bool ImGui::FileManager::readUserPaths() {
 	};
 	for (size_t i = 0; i < arraySize(defaultFolders); ++i) {
 		std::string ph = load(defaultFoldersId[i]);
-		Log(ph);
 		if (dirExists(ph.data()))
 			paths.insert({ defaultFolders[i], ph });
 	}
@@ -358,10 +357,12 @@ inline ImGui::Folder ImGui::listThisFolder(const char* path) {
 		size_t i = 0;
 		for (i = 0; i < folder.dir.n_files; ++i)
 		{
-			tinydir_file file;
+			ImGui::File file;
 			if (tinydir_readfile_n(&folder.dir, &file, i) > -1) {
 				std::string name = file.name;
+
 				if (name != "." && name != "..") {
+
 					folder.appedChild(file);
 				}
 			}
