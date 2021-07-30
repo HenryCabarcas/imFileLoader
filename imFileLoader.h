@@ -132,7 +132,7 @@ namespace ImGui {
 		}
 		bool showFilesIcons(bool*, char*, bool showFiles = true);
 		bool readUserPaths();
-		const char* drawUserFolders();
+		std::string drawUserFolders();
 		std::vector<File> findFileList(Folder, const char*);
 
 	private:
@@ -328,8 +328,9 @@ inline bool ImGui::FileManager::readUserPaths() {
 	};
 	for (size_t i = 0; i < arraySize(defaultFolders); ++i) {
 		std::string ph = load(defaultFoldersId[i]);
-		if (dirExists(ph.data()))
+		if (dirExists(ph.data())) {
 			paths.insert({ defaultFolders[i], ph });
+		}
 	}
 
 	return paths.size() > 0;
@@ -389,7 +390,7 @@ inline const char* ImGui::drawDiskLetters() {
 
 }
 
-inline const char* ImGui::FileManager::drawUserFolders() {
+inline std::string ImGui::FileManager::drawUserFolders() {
 	ImGui::Text("User Folders:");
 	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 	for (size_t i = 0; i < paths.size(); ++i) {
@@ -397,15 +398,14 @@ inline const char* ImGui::FileManager::drawUserFolders() {
 			std::string name = paths[defaultFolders[i]];
 			ImGui::TreeNodeEx((void*)(i + 100), node_flags, defaultFolders[i]);
 			if (ImGui::IsItemClicked()) {
-				return name.c_str();
-
+				return name;
 			}
 		}
 		catch (std::exception e) {
 			continue;
 		}
 	}
-	return"";
+	return "";
 }
 
 inline std::vector<ImGui::File> ImGui::FileManager::findFileList(ImGui::Folder inputFolder, const char* value) {
@@ -647,12 +647,12 @@ inline bool ImGui::FileManager::content(bool showFiles) {
 			folder.load(driveLetter);
 			folderSelected = driveLetter;
 		}
-		const char* userFolder = drawUserFolders();
+		std::string userFolder = drawUserFolders();
 		if (userFolder != "" && userFolder != folder.getPath().c_str()) {
 			_back.push_back(folder);
 			_forward.clear();
 			Log(userFolder);
-			folder.load(userFolder);
+			folder.load(userFolder.c_str());
 			folderSelected = userFolder;
 		}
 	}
