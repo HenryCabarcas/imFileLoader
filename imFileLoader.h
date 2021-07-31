@@ -21,11 +21,15 @@
 #endif
 
 #include <filesystem>
+namespace fs = std::filesystem;
+
 
 #ifndef _MAP_
 #include <map>
 #endif
 #include <iostream>
+#include <Shlobj.h>
+
 #include <tinydir.h>
 
 
@@ -79,7 +83,6 @@ namespace gl {
 
 namespace ImGui {
 	typedef tinydir_file File;
-
 	class Folder {
 	public:
 
@@ -219,9 +222,12 @@ namespace gl {
 		glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 #endif
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
-		stbi_image_free(image_data);
 		glActiveTexture(GL_TEXTURE4);
-		return  gl::Texture(&image_texture, (float)image_width, (float)image_height);
+		gl::Texture tempT = gl::Texture(&image_texture, (float)image_width, (float)image_height);
+		//memcpy_s(tempT.storage, sizeof(tempT.storage), image_data, sizeof(image_data));
+		//stbi_image_free(image_data);
+		tempT.storage = image_data;
+		return  tempT;
 	}
 }
 #endif
@@ -621,7 +627,6 @@ inline bool ImGui::FileManager::content(bool showFiles) {
 		ImGui::SameLine();
 		if (ImGui::Button("Confirm")) {
 			std::string command = folder.getPath() + "/" + newFolderName;
-			namespace fs = std::filesystem;
 			if (fs::create_directory(command.c_str())) {
 				folder.load(command.c_str());
 				folderSelected = command;
