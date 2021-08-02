@@ -57,6 +57,7 @@ namespace gl {
 		Texture(unsigned int datain, int x, int y) : id(datain), width(x), height(y) { }
 		Texture(unsigned int* datain, int x, int y, void* d) : id(*datain), width(x), height(y), storage(d) { }
 		Texture(unsigned int* datain, int x, int y) : id(*datain), width(x), height(y) { }
+		//~Texture() { clear(); }
 		template<class T>
 		T operator[](int i) {
 			switch (i) {
@@ -75,6 +76,7 @@ namespace gl {
 			width = input[0];
 			height = input[1];
 		}
+		void clear();
 	};
 	Texture LoadTextureFromFile(std::string filename);
 }
@@ -111,7 +113,7 @@ namespace ImGui {
 		~FileManager() {};
 
 		void setTitle(const char* _title) { title = _title; }
-		void setIcons(std::map<std::string, gl::Texture>* _icons) { icons = _icons; }
+		void setIcons(std::map<std::string, gl::Texture>* _icons) { icons = std::move(_icons); }
 		void setPath(const char* _path) {
 			std::string temp(_path);
 			while (temp.find('\\') != std::string::npos)
@@ -138,8 +140,8 @@ namespace ImGui {
 		std::string drawUserFolders();
 		std::vector<File> findFileList(Folder, const char*);
 
-	private:
 		bool content(bool showFiles = true);
+	private:
 		std::string title = "", path = "";
 		std::map<const char*, std::string> paths;
 		std::vector<const char*> filters = { "*" };
@@ -164,8 +166,6 @@ namespace ImGui {
 
 	bool FileIcon(ImTextureID, const char*, bool*, bool, ImVec2, ImVec4, ImVec4);
 
-	;
-
 
 
 }
@@ -183,7 +183,7 @@ static std::vector<const char*> drives;
 const KNOWNFOLDERID defaultFoldersId[] = {
 		FOLDERID_Profile, FOLDERID_Documents, FOLDERID_Desktop, FOLDERID_Music, FOLDERID_Objects3D, FOLDERID_OneDrive, FOLDERID_Pictures, FOLDERID_Videos
 };
-const const char* defaultFolders[] = {
+static std::string defaultFolders[] = {
 	"User", "Documents","Desktop","Music","Objects 3D","OneDrive","Pictures","Videos"
 };
 
@@ -232,7 +232,7 @@ namespace gl {
 }
 #endif
 
-inline bool BeginIsolated(const char* title, bool* opened = (bool*)0, ImGuiWindowFlags flags = 0) {
+inline bool BeginIsolated(const char* title, bool* opened = (bool*)NULL, ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse) {
 	ImGuiViewport* view = ImGui::GetMainViewport();
 	ImVec4* colors = ImGui::GetStyle().Colors;
 	ImVec4 c = colors[ImGuiCol_WindowBg];
@@ -251,7 +251,7 @@ inline bool BeginIsolated(const char* title, bool* opened = (bool*)0, ImGuiWindo
 	if (clicked)ImGui::SetNextWindowFocus();
 	colors[ImGuiCol_WindowBg] = c;
 	ImGui::SetNextWindowFocus();
-	ImGui::SetNextWindowSize(ImVec2(view->Size.x * 0.75, view->Size.y * 0.75));
+	//ImGui::SetNextWindowSize(ImVec2(view->Size.x * 0.75, view->Size.y * 0.75));
 	ImGui::SetNextWindowPos(ImVec2(view->Size.x * 0.5f, view->Size.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 	ImGui::Begin(title, opened, flags);
 	ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
@@ -302,7 +302,7 @@ inline bool readLocalDisks() {
 	return false;
 }
 
-static inline bool dirExists(char* path)
+static bool dirExists(char* path)
 {
 	struct stat info;
 
@@ -335,7 +335,7 @@ inline bool ImGui::FileManager::readUserPaths() {
 	for (size_t i = 0; i < arraySize(defaultFolders); ++i) {
 		std::string ph = load(defaultFoldersId[i]);
 		if (dirExists(ph.data())) {
-			paths.insert({ defaultFolders[i], ph });
+			paths.insert({ defaultFolders[i].c_str(), ph });
 		}
 	}
 
@@ -401,8 +401,8 @@ inline std::string ImGui::FileManager::drawUserFolders() {
 	ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 	for (size_t i = 0; i < paths.size(); ++i) {
 		try {
-			std::string name = paths[defaultFolders[i]];
-			ImGui::TreeNodeEx((void*)(i + 100), node_flags, defaultFolders[i]);
+			std::string name = paths[defaultFolders[i].c_str()];
+			ImGui::TreeNodeEx((void*)(i + 100), node_flags, defaultFolders[i].c_str());
 			if (ImGui::IsItemClicked()) {
 				return name;
 			}
@@ -656,7 +656,6 @@ inline bool ImGui::FileManager::content(bool showFiles) {
 		if (userFolder != "" && userFolder != folder.getPath().c_str()) {
 			_back.push_back(folder);
 			_forward.clear();
-			Log(userFolder);
 			folder.load(userFolder.c_str());
 			folderSelected = userFolder;
 		}
@@ -675,41 +674,41 @@ inline bool ImGui::FileManager::content(bool showFiles) {
 	return false;
 
 }
+static bool visible = true;
 inline bool ImGui::FileManager::imFolderLoader(const char* id) {
-	bool visible = false;
 	if (folderVisible == id) {
-		visible = true;
 		multipleSelection = false;
 		//stringSelectedBuffer.clear();
 		if (folder.getPath().size() == 0)
 			folder.load(path.c_str());
 		ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
 		ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-		if (BeginIsolated(title.c_str(), &visible))
-		{
-			if (content(false)) {
-				hide();
+		if (visible) {
+			if (BeginIsolated(title.c_str()))
+			{
+				if (content(false)) {
+					hide();
+					EndIsolated();
+					return true;
+				}
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 0, 0.1, 1));
+
+				if (ImGui::Button("Cancel", ImVec2(80, 0))) {
+					hide();
+					filesSelected.clear();
+				}
+				ImGui::PopStyleColor();
+				ImGui::SameLine();
+				if (ImGui::Button("Select", ImVec2(100, 0)) && !folderSelected.empty()) {
+					hide();
+					EndIsolated();
+					return true;
+				}
+
+
 				EndIsolated();
-				return true;
 			}
-			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 0, 0.1, 1));
-
-			if (ImGui::Button("Cancel", ImVec2(80, 0))) {
-				hide();
-				filesSelected.clear();
-			}
-			ImGui::PopStyleColor();
-			ImGui::SameLine();
-			if (ImGui::Button("Select", ImVec2(100, 0)) && !folderSelected.empty()) {
-				Log(folderSelected);
-				hide();
-				EndIsolated();
-				return true;
-			}
-
-
 		}
-		EndIsolated();
 	}
 	return false;
 }
@@ -723,10 +722,9 @@ inline bool ImGui::FileManager::imFileLoader(const char* id) {
 			folder.load(path.c_str());
 		ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
 		ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-		if (BeginIsolated(title.c_str(), &visible))
+		if (BeginIsolated(title.c_str()))
 		{
 			if (content()) {
-				Log(filesSelected[0]);
 				hide();
 				EndIsolated();
 				return true;
@@ -740,7 +738,6 @@ inline bool ImGui::FileManager::imFileLoader(const char* id) {
 			ImGui::PopStyleColor();
 			ImGui::SameLine();
 			if (ImGui::Button("Open", ImVec2(100, 0)) && filesSelected.size() > 0) {
-				Log(filesSelected[0]);
 				hide();
 				EndIsolated();
 				return true;
@@ -752,7 +749,6 @@ inline bool ImGui::FileManager::imFileLoader(const char* id) {
 	}
 	return false;
 }
-
 inline bool ImGui::FileManager::imFileSaver(const char* id) {
 	bool visible = false;
 	if (saverVisible == id) {
@@ -763,7 +759,7 @@ inline bool ImGui::FileManager::imFileSaver(const char* id) {
 			folder.load(path.c_str());
 		ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
 		ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-		if (BeginIsolated(title.c_str(), &visible))
+		if (BeginIsolated(title.c_str()))
 		{
 			if (content()) {
 
